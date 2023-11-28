@@ -1,0 +1,96 @@
+import base58
+from binascii import unhexlify
+import hashlib
+import os
+import subprocess
+
+def instalar_librerias():
+    subprocess.run(['pip', 'install', 'base58'])
+
+def convertir_a_wif(hex_key, comprimida=True):
+    private_key = unhexlify(hex_key)
+
+    if comprimida:
+        private_key_wif = b'\x80' + private_key + b'\x01'
+    else:
+        private_key_wif = b'\x80' + private_key
+
+    checksum = unhexlify(hashlib.sha256(hashlib.sha256(private_key_wif).digest()).hexdigest()[:8])
+    wif_key = base58.b58encode(private_key_wif + checksum).decode('utf-8')
+
+    return wif_key
+
+def obtener_direccion(hex_key, comprimida=True, formato='P2PKH'):
+    private_key = unhexlify(hex_key)
+
+    if formato == 'P2PKH':
+        if comprimida:
+            prefix = b'\x00'
+        else:
+            prefix = b'\x00'
+    elif formato == 'P2WPKH':
+        prefix = b'\x00'
+    elif formato == 'P2SH':
+        prefix = b'\x05'
+    elif formato == 'Bech32':
+        # Dirección Bech32 para SegWit
+        return None  # Actualizaré esta parte en un momento
+    else:
+        raise ValueError('Formato de dirección no válido')
+
+    public_key = hashlib.sha256(private_key).digest()
+    ripemd160 = hashlib.new('ripemd160')
+    ripemd160.update(public_key)
+    hashed_public_key = prefix + ripemd160.digest()
+    checksum = hashlib.sha256(hashlib.sha256(hashed_public_key).digest()).hexdigest()[:8]
+    address = base58.b58encode(hashed_public_key + unhexlify(checksum)).decode('utf-8')
+
+    return address
+
+def agregar_a_archivo(output_file, contenido):
+    with open(output_file, 'a') as file:
+        file.write(contenido)
+
+def verificar_unicidad(output_file, direccion):
+    with open(output_file, 'r') as file:
+        return direccion in file.read()
+
+def main():
+    # Instalar librerías
+    instalar_librerias()
+
+    # Nombre del archivo de salida
+    archivo_salida = 'resultado_claves.txt'
+
+    # Ejemplo de uso
+    total_lineas = sum(1 for _ in open('tu_archivo.txt'))
+    linea_actual = 0
+
+    with open('tu_archivo.txt', 'r') as file, open(archivo_salida, 'a') as output_file:
+        for linea in file:
+            linea_actual += 1
+            clave_hex = linea.strip()
+            wif_comprimida = convertir_a_wif(clave_hex, comprimida=True)
+            wif_no_comprimida = convertir_a_wif(clave_hex, comprimida=False)
+            direccion_comprimida_P2PKH = obtener_direccion(clave_hex, comprimida=True, formato='P2PKH')
+            direccion_no_comprimida_P2PKH = obtener_direccion(clave_hex, comprimida=False, formato='P2PKH')
+            direccion_comprimida_P2WPKH = obtener_direccion(clave_hex, comprimida=True, formato='P2WPKH')
+
+            # Verificar unicidad de direcciones antes de agregar
+            if not verificar_unicidad(archivo_salida, direccion_comprimida_P2PKH):
+                agregar_a_archivo(archivo_salida, f'Clave Hexadecimal: {clave_hex}\n')
+                agregar_a_archivo(archivo_salida, f'WIF Comprimida: {wif_comprimida}\n')
+                agregar_a_archivo(archivo_salida, f'WIF No Comprimida: {wif_no_comprimida}\n')
+                agregar_a_archivo(archivo_salida, f'Dirección Comprimida (P2PKH): {direccion_comprimida_P2PKH}\n')
+                agregar_a_archivo(archivo_salida, f'Dirección No Comprimida (P2PKH): {direccion_no_comprimida_P2PKH}\n')
+                agregar_a_archivo(archivo_salida, f'Dirección Comprimida (SegWit): {direccion_comprimida_P2WPKH}\n')
+                agregar_a_archivo(archivo_salida, '---\n')
+
+            # Actualizar progreso
+            porcentaje = (linea_actual / total_lineas) * 100
+            print(f'Progreso: {int(porcentaje)}%', end='\r')
+
+    print('\nProceso completo. Se ha actualizado el archivo con las nuevas direcciones únicas.')
+
+if __name__ == "__main__":
+    main()
